@@ -1,0 +1,23 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+gesture_garden/.venv/
+.venv/
+
+# Runtime outputs
+gesture_garden/data/sketches/
+gesture_garden/data/generated/
+gesture_garden/screenshots/
+
+# Local/editor files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
