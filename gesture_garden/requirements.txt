@@ -2,3 +2,5 @@ opencv-python
 mediapipe
 pygame
 numpy
+requests
+python-dotenv

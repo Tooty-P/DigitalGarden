@@ -1,7 +1,7 @@
 ﻿"""手势追踪模块。
 
 使用 OpenCV 打开摄像头，并用 MediaPipe Tasks HandLandmarker 获取食指指尖位置。
-绘画触发规则：拇指指尖和食指指尖捏合时才绘画；不捏合时只移动光标。
+绘画触发规则：拇指和食指捏合时触发当前工具；不捏合时只移动光标。
 """
 
 from pathlib import Path
@@ -32,8 +32,21 @@ class HandTracker:
         self.timestamp_ms = 0
 
         # 捏合阈值：使用 MediaPipe 的 0-1 归一化坐标计算。
-        # 数值越大越容易触发，越小越严格。
-        self.pinch_threshold = 0.055
+        # 开始阈值比旧值稍大，让捏合更容易触发；结束阈值更大，避免临界抖动频繁断线。
+        self.pinch_start_threshold = 0.065
+        self.pinch_end_threshold = 0.085
+
+        # 连续帧确认：避免一帧误判就立刻开始或结束操作。
+        self.pinch_start_frames = 2
+        self.pinch_end_frames = 4
+        self.pinch_hold_frames = 6
+        self.pinch_candidate_count = 0
+        self.release_candidate_count = 0
+        self.hold_count = 0
+        self.stable_is_pinching = False
+        self.last_index_pos = None
+        self.last_thumb_pos = None
+        self.last_pinch_distance = None
 
         # 尽量让摄像头画面和 Pygame 窗口比例接近
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
@@ -76,18 +89,7 @@ class HandTracker:
             self.hand_tracking_ready = False
 
     def update(self):
-        """读取一帧摄像头画面，并返回食指坐标和捏合状态。
-
-        返回格式：
-        {
-            "frame": 摄像头画面,
-            "index_pos": (x, y) 或 None,
-            "is_drawing": True/False,
-            "is_pinching": True/False,
-            "hand_tracking_ready": True/False,
-            "status_message": 状态文字
-        }
-        """
+        """读取一帧摄像头画面，并返回光标坐标和捏合状态。"""
         success, frame = self.cap.read()
         if not success:
             return self._build_result(None, None, False, "Camera not found")
@@ -111,6 +113,29 @@ class HandTracker:
             return self._build_result(frame, None, False, f"Hand tracking error: {error}")
 
         if not result.hand_landmarks:
+            # 手部短暂丢失时，如果刚才还在捏合，先保持几帧，避免操作被摄像头抖动切断。
+            if self.stable_is_pinching and self.hold_count < self.pinch_hold_frames:
+                self.hold_count += 1
+                status_message = "Pinch held: active"
+                if self.last_index_pos is not None and self.last_thumb_pos is not None:
+                    self._draw_hand_debug(
+                        frame,
+                        self.last_index_pos,
+                        self.last_thumb_pos,
+                        True,
+                        self.last_pinch_distance,
+                    )
+                return self._build_result(
+                    frame,
+                    self.last_index_pos,
+                    True,
+                    status_message,
+                    is_pinching=True,
+                    thumb_pos=self.last_thumb_pos,
+                    pinch_distance=self.last_pinch_distance,
+                )
+
+            self._reset_pinch_state()
             return self._build_result(frame, None, False, "Show your hand to move cursor")
 
         landmarks = result.hand_landmarks[0]
@@ -122,11 +147,15 @@ class HandTracker:
         thumb_pos = self._to_pixel(thumb_tip)
 
         pinch_distance = math.hypot(index_tip.x - thumb_tip.x, index_tip.y - thumb_tip.y)
-        is_pinching = pinch_distance <= self.pinch_threshold
-        status_message = "Pinch detected: drawing" if is_pinching else "Move cursor; pinch to draw"
+        is_pinching = self._update_pinch_state(pinch_distance)
+        status_message = "Pinch detected: active" if is_pinching else "Move cursor; pinch to use tool"
 
-        # 画到摄像头预览上，方便确认程序识别到了食指、拇指和捏合状态
-        self._draw_hand_debug(frame, index_pos, thumb_pos, is_pinching)
+        self.last_index_pos = index_pos
+        self.last_thumb_pos = thumb_pos
+        self.last_pinch_distance = pinch_distance
+
+        # 画到摄像头预览上，方便确认程序识别到了食指、拇指、捏合状态和距离数值。
+        self._draw_hand_debug(frame, index_pos, thumb_pos, is_pinching, pinch_distance)
 
         return self._build_result(
             frame,
@@ -144,10 +173,54 @@ class HandTracker:
         y = int(landmark.y * self.height)
         return (x, y)
 
-    def _draw_hand_debug(self, frame, index_pos, thumb_pos, is_pinching):
+    def _update_pinch_state(self, pinch_distance):
+        """用迟滞阈值和连续帧确认，得到更稳定的捏合状态。"""
+        self.hold_count = 0
+
+        if self.stable_is_pinching:
+            # 已经在操作时，只有明显松开并持续几帧，才真正退出。
+            if pinch_distance >= self.pinch_end_threshold:
+                self.release_candidate_count += 1
+            else:
+                self.release_candidate_count = 0
+
+            if self.release_candidate_count >= self.pinch_end_frames:
+                self.stable_is_pinching = False
+                self.release_candidate_count = 0
+                self.pinch_candidate_count = 0
+        else:
+            # 未操作时，连续几帧满足开始阈值，才进入操作。
+            if pinch_distance <= self.pinch_start_threshold:
+                self.pinch_candidate_count += 1
+            else:
+                self.pinch_candidate_count = 0
+
+            if self.pinch_candidate_count >= self.pinch_start_frames:
+                self.stable_is_pinching = True
+                self.pinch_candidate_count = 0
+                self.release_candidate_count = 0
+
+        return self.stable_is_pinching
+
+    def _reset_pinch_state(self):
+        """手部持续丢失后，重置捏合状态。"""
+        self.stable_is_pinching = False
+        self.pinch_candidate_count = 0
+        self.release_candidate_count = 0
+        self.hold_count = 0
+        self.last_index_pos = None
+        self.last_thumb_pos = None
+        self.last_pinch_distance = None
+
+    def _draw_hand_debug(self, frame, index_pos, thumb_pos, is_pinching, pinch_distance=None):
         """在摄像头预览上绘制调试标记。"""
+        if index_pos is None or thumb_pos is None:
+            return
+
         color = (0, 255, 0) if is_pinching else (0, 255, 255)
         label = "Pinch" if is_pinching else "Cursor"
+        if pinch_distance is not None:
+            label = f"{label} {pinch_distance:.3f}"
 
         cv2.circle(frame, index_pos, 10, color, -1)
         cv2.circle(frame, thumb_pos, 8, (255, 180, 0), -1)

@@ -7,37 +7,50 @@ from drawing.sketch_exporter import export_sketch
 
 
 class Canvas:
-    """负责保存、绘制、清空用户的绘画轨迹。"""
+    """负责保存、绘制、清空、撤销用户的绘画轨迹。"""
 
     def __init__(self, width, height):
         self.width = width
         self.height = height
         self.strokes = []
         self.current_stroke = None
+        self.undo_stack = []
+        self.max_undo_steps = 30
 
-        # 几个适合二次元魔法画布的柔和颜色
+        # 12 个适合草图和二次元绘图的预设颜色。
         self.palette = [
+            (245, 252, 255),  # 白色
+            (40, 48, 62),     # 深灰
             (118, 229, 255),  # 青蓝
-            (255, 154, 208),  # 粉色
+            (68, 158, 255),   # 蓝色
             (190, 164, 255),  # 浅紫
+            (255, 154, 208),  # 粉色
+            (255, 116, 135),  # 珊瑚红
+            (255, 178, 94),   # 橙色
             (255, 234, 137),  # 奶油黄
             (152, 255, 202),  # 薄荷绿
+            (93, 214, 134),   # 草绿
+            (191, 204, 220),  # 蓝灰
         ]
-        self.color_names = ["青蓝", "粉色", "浅紫", "奶油黄", "薄荷绿"]
-        self.color_index = 0
+        self.color_names = [
+            "白色", "深灰", "青蓝", "蓝色", "浅紫", "粉色",
+            "珊瑚红", "橙色", "奶油黄", "薄荷绿", "草绿", "蓝灰",
+        ]
+        self.color_index = 2
         self.brush_color = self.palette[self.color_index]
         self.brush_width = 6
 
-        # 平滑相关参数：数值越小越稳，越大越跟手
+        # 平滑相关参数：数值越小越稳，越大越跟手。
         self.smoothing = 0.35
         self.min_point_distance = 3
         self.smoothed_point = None
 
-        # 切换颜色或粗细时，下一次输入会从当前位置重新开一笔
+        # 切换颜色或粗细时，下一次输入会从当前位置重新开一笔。
         self.should_restart_stroke = False
 
     def start_stroke(self, point):
         """开始一笔新的绘画。"""
+        self.save_undo_state()
         safe_point = self._clamp_point(point)
         self.smoothed_point = safe_point
         self.should_restart_stroke = False
@@ -54,7 +67,7 @@ class Canvas:
         new_point = self._smooth_point(self._clamp_point(point))
         last_point = self.current_stroke.points[-1]
 
-        # 点之间距离太近时不记录，减少手势抖动带来的锯齿
+        # 点之间距离太近时不记录，减少手势抖动带来的锯齿。
         if self._distance(last_point, new_point) >= self.min_point_distance:
             self.current_stroke.add_point(new_point)
 
@@ -66,14 +79,70 @@ class Canvas:
 
     def clear(self):
         """清空画布上的所有线条。"""
+        if self.strokes:
+            self.save_undo_state()
         self.strokes.clear()
         self.current_stroke = None
         self.smoothed_point = None
         self.should_restart_stroke = False
 
+    def erase_at(self, point, radius=18):
+        """在指定位置用圆形橡皮擦删除轨迹点。"""
+        if point is None or not self.strokes:
+            return False
+
+        erase_point = self._clamp_point(point)
+        new_strokes = []
+        changed = False
+
+        for stroke in self.strokes:
+            current_segment = []
+
+            for stroke_point in stroke.points:
+                # 在橡皮范围内的点会被删除；范围外的点保留。
+                if self._distance(stroke_point, erase_point) <= radius:
+                    changed = True
+                    self._append_segment(new_strokes, current_segment, stroke)
+                    current_segment = []
+                else:
+                    current_segment.append(stroke_point)
+
+            self._append_segment(new_strokes, current_segment, stroke)
+
+        if changed:
+            self.strokes = new_strokes
+            self.current_stroke = None
+            self.smoothed_point = None
+            self.should_restart_stroke = False
+
+        return changed
+
+    def begin_erase_action(self):
+        """开始一次连续擦除前记录撤销状态。"""
+        if self.strokes:
+            self.save_undo_state()
+
+    def save_undo_state(self):
+        """保存当前画布状态，供 Ctrl+Z 撤销。"""
+        snapshot = [stroke.copy() for stroke in self.strokes]
+        self.undo_stack.append(snapshot)
+        if len(self.undo_stack) > self.max_undo_steps:
+            self.undo_stack.pop(0)
+
+    def undo(self):
+        """撤销上一笔、上次擦除或清空。"""
+        if not self.undo_stack:
+            return False
+
+        self.strokes = self.undo_stack.pop()
+        self.current_stroke = None
+        self.smoothed_point = None
+        self.should_restart_stroke = False
+        return True
+
     def set_brush_width(self, width):
         """设置画笔粗细，并限制在适合绘画的范围。"""
-        new_width = max(2, min(18, int(width)))
+        new_width = max(2, min(32, int(width)))
         if new_width != self.brush_width:
             self.brush_width = new_width
             self._request_restart_stroke()
@@ -103,6 +172,16 @@ class Canvas:
         """导出当前草图，供后续 AI 读取。"""
         return export_sketch(self)
 
+    def _append_segment(self, strokes, points, source_stroke):
+        """把擦除后剩余的一段轨迹重新保存成 stroke。"""
+        if not points:
+            return
+
+        new_stroke = Stroke(source_stroke.color, source_stroke.width)
+        for point in points:
+            new_stroke.add_point(point)
+        strokes.append(new_stroke)
+
     def _request_restart_stroke(self):
         """请求下一次绘画输入使用新笔刷重新开笔。"""
         if self.current_stroke is not None:
@@ -123,7 +202,7 @@ class Canvas:
         return self.smoothed_point
 
     def _clamp_point(self, point):
-        """把点限制在窗口范围内，避免线条画到窗口外。"""
+        """把点限制在画布范围内，避免线条画到画布外。"""
         x = max(0, min(self.width - 1, point[0]))
         y = max(0, min(self.height - 1, point[1]))
         return (x, y)

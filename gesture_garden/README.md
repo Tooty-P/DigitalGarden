@@ -42,11 +42,15 @@ Pygame 窗口展示生成结果
 | `C` | 清空画布 |
 | `S` | 保存当前草图 |
 | `G` | 执行 AI 流程：导出草图、生成 Prompt、生成并展示图片 |
+| `R` | 从结果或错误页面返回绘画模式 |
 | `M` | 切换鼠标备用绘画模式 |
 | 拇指 + 食指捏合 | 开始绘画 |
 | 松开捏合 | 停止绘画，只移动光标 |
 | `TAB` | 切换下一个画笔颜色 |
-| `1` - `5` | 选择指定画笔颜色 |
+| `1` - `5` | 切换生成主题：garden / pet / room / sky_island / character |
+| 输入文字 | 编辑补充关键词，例如 `flowers tree small house` |
+| `Enter` | 确认关键词；再次按下可重新编辑 |
+| `Backspace` | 删除关键词中的最后一个字符 |
 | `[` / `-` | 减小画笔粗细 |
 | `]` / `=` | 增大画笔粗细 |
 | `Q` / `ESC` | 退出程序 |
@@ -97,7 +101,7 @@ cd D:\Tooty\Documents\CodeX\DigitalGarden\gesture_garden
 py -3.12 main.py
 ```
 
-运行后会打开 960x540 的 Pygame 窗口。把手放到摄像头前，移动食指可以移动光标；拇指和食指捏合时会绘制发光线条。按 `G` 会启动模拟 AI 生成流程，窗口会显示 Loading，完成后右侧会展示生成结果。
+运行后会打开 Pygame 窗口。把手放到摄像头前，移动食指可以移动光标；拇指和食指捏合时会绘制发光线条。先输入补充关键词并按 `Enter` 确认，再用 `1` - `5` 选择主题，按 `G` 会保存草图并调用 SiliconFlow 生成图片。生成中会显示 Loading，完成后进入结果页面；按 `R` 返回绘画。
 
 ## Output Files
 
@@ -107,10 +111,10 @@ py -3.12 main.py
 gesture_garden/data/sketches/
 ```
 
-按 `G` 后，模拟生成图片会保存到：
+按 `G` 后，生成图片会保存到：
 
 ```text
-gesture_garden/data/generated/
+gesture_garden/outputs/generated/
 ```
 
 这些输出文件属于运行产物，默认不提交到 Git。

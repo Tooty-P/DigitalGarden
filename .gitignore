@@ -11,6 +11,7 @@ gesture_garden/.venv/
 # Runtime outputs
 gesture_garden/data/sketches/
 gesture_garden/data/generated/
+gesture_garden/outputs/
 gesture_garden/screenshots/
 
 # Local/editor files
@@ -21,3 +22,8 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Environment secrets
+gesture_garden/.env
+.env
+

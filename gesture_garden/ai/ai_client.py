@@ -128,9 +128,8 @@ class OpenAICompatibleProvider(AIProvider):
 
         # 如果服务没有给 prompt，就用本地 prompt_builder 兜底生成。
         if not result["prompt"]:
-            prompt_result = build_prompt(result)
-            result["style"] = prompt_result["style"]
-            result["prompt"] = prompt_result["prompt"]
+            result["style"] = "anime kawaii"
+            result["prompt"] = build_prompt(result)
 
         return result
 
@@ -214,9 +213,8 @@ def create_mock_result(image_path, error_message=""):
         "style": "anime",
         "prompt": "",
     }
-    prompt_result = build_prompt(analysis_result)
-    analysis_result["style"] = prompt_result["style"]
-    analysis_result["prompt"] = prompt_result["prompt"]
+    analysis_result["style"] = "anime kawaii"
+    analysis_result["prompt"] = build_prompt(analysis_result)
 
     if error_message:
         analysis_result["error"] = error_message
