@@ -129,7 +129,7 @@ def draw_ui(screen, font, status_text, canvas, input_mode, save_message_timer, g
     lines = [
         "Magic Canvas AI 魔法画布",
         status_text,
-        "C 清空 | S 保存草图 | G AI生成 | M 鼠标模式 | TAB/1-5 换色 | [ ] 调笔刷 | Q/ESC 退出",
+        "捏合画 / 松开移 | C清空 | S保存 | G生成 | M鼠标 | TAB/1-5换色 | [ ]笔刷 | Q/ESC退出",
     ]
 
     panel = pygame.Surface((860, 132), pygame.SRCALPHA)
@@ -236,12 +236,15 @@ def translate_status(status_text):
     """把手势追踪状态转换成中文。"""
     status_map = {
         "Hand tracking ready": "手势识别已就绪",
-        "Index finger detected": "已检测到食指，正在绘画",
-        "Show your hand to draw": "请把手放到摄像头前开始绘画",
+        "Index finger detected": "已检测到食指",
+        "Show your hand to draw": "请把手放到摄像头前",
         "Camera not found": "未检测到摄像头",
         "Hand tracking model not ready": "手势模型未就绪",
         "Missing assets/hand_landmarker.task": "缺少手势识别模型文件",
         "MediaPipe Tasks import failed": "MediaPipe Tasks 导入失败",
+        "Show your hand to move cursor": "请把手放到摄像头前移动光标",
+        "Move cursor; pinch to draw": "移动光标中：拇指和食指捏合开始绘画",
+        "Pinch detected: drawing": "捏合已检测：正在绘画",
     }
     return status_map.get(status_text, status_text)
 
@@ -427,3 +430,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+

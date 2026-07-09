@@ -1,10 +1,11 @@
 ﻿"""手势追踪模块。
 
 使用 OpenCV 打开摄像头，并用 MediaPipe Tasks HandLandmarker 获取食指指尖位置。
-这个模块只负责“看见手”和“给出食指坐标”，不负责绘画逻辑。
+绘画触发规则：拇指指尖和食指指尖捏合时才绘画；不捏合时只移动光标。
 """
 
 from pathlib import Path
+import math
 
 import cv2
 
@@ -29,6 +30,10 @@ class HandTracker:
         self.width = width
         self.height = height
         self.timestamp_ms = 0
+
+        # 捏合阈值：使用 MediaPipe 的 0-1 归一化坐标计算。
+        # 数值越大越容易触发，越小越严格。
+        self.pinch_threshold = 0.055
 
         # 尽量让摄像头画面和 Pygame 窗口比例接近
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
@@ -71,13 +76,14 @@ class HandTracker:
             self.hand_tracking_ready = False
 
     def update(self):
-        """读取一帧摄像头画面，并返回食指坐标。
+        """读取一帧摄像头画面，并返回食指坐标和捏合状态。
 
         返回格式：
         {
             "frame": 摄像头画面,
             "index_pos": (x, y) 或 None,
             "is_drawing": True/False,
+            "is_pinching": True/False,
             "hand_tracking_ready": True/False,
             "status_message": 状态文字
         }
@@ -105,36 +111,75 @@ class HandTracker:
             return self._build_result(frame, None, False, f"Hand tracking error: {error}")
 
         if not result.hand_landmarks:
-            return self._build_result(frame, None, False, "Show your hand to draw")
+            return self._build_result(frame, None, False, "Show your hand to move cursor")
 
         landmarks = result.hand_landmarks[0]
         index_tip = landmarks[hand_landmarker.HandLandmark.INDEX_FINGER_TIP]
+        thumb_tip = landmarks[hand_landmarker.HandLandmark.THUMB_TIP]
 
         # 把 0-1 的归一化坐标转换成窗口像素坐标
-        x = int(index_tip.x * self.width)
-        y = int(index_tip.y * self.height)
-        index_pos = (x, y)
+        index_pos = self._to_pixel(index_tip)
+        thumb_pos = self._to_pixel(thumb_tip)
 
-        # 画到摄像头预览上，方便确认程序真的识别到了食指
-        cv2.circle(frame, index_pos, 10, (0, 255, 255), -1)
+        pinch_distance = math.hypot(index_tip.x - thumb_tip.x, index_tip.y - thumb_tip.y)
+        is_pinching = pinch_distance <= self.pinch_threshold
+        status_message = "Pinch detected: drawing" if is_pinching else "Move cursor; pinch to draw"
+
+        # 画到摄像头预览上，方便确认程序识别到了食指、拇指和捏合状态
+        self._draw_hand_debug(frame, index_pos, thumb_pos, is_pinching)
+
+        return self._build_result(
+            frame,
+            index_pos,
+            is_pinching,
+            status_message,
+            is_pinching=is_pinching,
+            thumb_pos=thumb_pos,
+            pinch_distance=pinch_distance,
+        )
+
+    def _to_pixel(self, landmark):
+        """把 MediaPipe 的归一化坐标转换为窗口像素坐标。"""
+        x = int(landmark.x * self.width)
+        y = int(landmark.y * self.height)
+        return (x, y)
+
+    def _draw_hand_debug(self, frame, index_pos, thumb_pos, is_pinching):
+        """在摄像头预览上绘制调试标记。"""
+        color = (0, 255, 0) if is_pinching else (0, 255, 255)
+        label = "Pinch" if is_pinching else "Cursor"
+
+        cv2.circle(frame, index_pos, 10, color, -1)
+        cv2.circle(frame, thumb_pos, 8, (255, 180, 0), -1)
+        cv2.line(frame, index_pos, thumb_pos, color, 2)
         cv2.putText(
             frame,
-            "Index",
-            (x + 12, y - 12),
+            label,
+            (index_pos[0] + 12, index_pos[1] - 12),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.55,
-            (0, 255, 255),
+            color,
             2,
         )
 
-        return self._build_result(frame, index_pos, True, "Index finger detected")
-
-    def _build_result(self, frame, index_pos, is_drawing, status_message):
+    def _build_result(
+        self,
+        frame,
+        index_pos,
+        is_drawing,
+        status_message,
+        is_pinching=False,
+        thumb_pos=None,
+        pinch_distance=None,
+    ):
         """统一整理返回数据，减少 update 里的重复代码。"""
         return {
             "frame": frame,
             "index_pos": index_pos,
+            "thumb_pos": thumb_pos,
             "is_drawing": is_drawing,
+            "is_pinching": is_pinching,
+            "pinch_distance": pinch_distance,
             "hand_tracking_ready": self.hand_tracking_ready,
             "status_message": status_message,
         }
