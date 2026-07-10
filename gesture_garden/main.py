@@ -29,6 +29,13 @@ THEME_KEYS = {
     pygame.K_4: "sky_island",
     pygame.K_5: "character",
 }
+THEME_LABELS = [
+    ("1", "garden"),
+    ("2", "pet"),
+    ("3", "room"),
+    ("4", "sky_island"),
+    ("5", "character"),
+]
 
 DEFAULT_ERASER_RADIUS = 18
 MIN_ERASER_RADIUS = 6
@@ -254,15 +261,14 @@ def draw_ui(
     y += 25
     draw_key_value(screen, small_font, "颜色", canvas.color_names[canvas.color_index], SIDE_PANEL_RECT.x + 16, y)
 
-    y += 34
-    draw_section_title(screen, font, "生成", SIDE_PANEL_RECT.x + 16, y)
-    y += 28
-    draw_key_value(screen, small_font, "Theme", current_theme, SIDE_PANEL_RECT.x + 16, y)
-    y += 25
+    draw_theme_selector(screen, small_font, current_theme)
+
+    keyword_y = SIDE_PANEL_RECT.y + 414
+    draw_section_title(screen, font, "关键词", SIDE_PANEL_RECT.x + 16, keyword_y)
     keyword_label = extra_keywords_text if extra_keywords_text else "(empty)"
     if keyword_editing:
         keyword_label = f"{keyword_label}|"
-    draw_wrapped_value(screen, small_font, "Keywords", keyword_label, SIDE_PANEL_RECT.x + 16, y, 270)
+    draw_wrapped_value(screen, small_font, "Keywords", keyword_label, SIDE_PANEL_RECT.x + 16, keyword_y + 30, 270)
 
     draw_section_title(screen, font, "颜色", SIDE_PANEL_RECT.x + 18, SIDE_PANEL_RECT.y + 482)
     for index, rect in enumerate(get_color_swatch_rects(canvas)):
@@ -299,6 +305,31 @@ def draw_key_value(screen, font, key, value, x, y):
     value_text = font.render(value, True, (224, 234, 247))
     screen.blit(key_text, (x, y))
     screen.blit(value_text, (x + 62, y))
+
+
+def draw_theme_selector(screen, font, current_theme):
+    """在右侧空白区域显示 1-5 主题快捷键提示。"""
+    panel_rect = pygame.Rect(SIDE_PANEL_RECT.x + 150, SIDE_PANEL_RECT.y + 314, 142, 158)
+    pygame.draw.rect(screen, (24, 30, 42), panel_rect, border_radius=8)
+    pygame.draw.rect(screen, (76, 91, 116), panel_rect, 1, border_radius=8)
+
+    title = font.render("主题 1-5", True, (230, 238, 248))
+    screen.blit(title, (panel_rect.x + 10, panel_rect.y + 8))
+
+    row_y = panel_rect.y + 34
+    for key, theme in THEME_LABELS:
+        active = theme == current_theme
+        row_rect = pygame.Rect(panel_rect.x + 8, row_y, panel_rect.width - 16, 20)
+
+        if active:
+            pygame.draw.rect(screen, (255, 232, 143), row_rect, border_radius=5)
+            text_color = (25, 30, 40)
+        else:
+            text_color = (190, 206, 226)
+
+        label = font.render(f"{key}  {theme}", True, text_color)
+        screen.blit(label, (row_rect.x + 8, row_rect.y + 2))
+        row_y += 23
 
 
 def draw_wrapped_value(screen, font, key, value, x, y, max_width):
